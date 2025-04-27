@@ -11,6 +11,28 @@ import UIKit
 final class ChatViewController: UIViewController {
 
     private var messages: [String] = []
+    private var mockData: [String] = [
+        "Hey! What's up?",
+        "Just got back from the gym.",
+        "Oh nice! How was it?",
+        "Pretty good, feeling energized.",
+        "Cool! What are you working on?",
+        "Just browsing some articles online.",
+        "Anything interesting?",
+        "Yeah, a few things about AI.",
+        "That's fascinating!",
+        "Tell me about it later?",
+        "Sure thing! What about you?",
+        "Just finished making dinner.",
+        "Ooh, what did you have?",
+        "Pasta with pesto and chicken.",
+        "Sounds delicious!",
+        "It was pretty good, thanks!",
+        "So, what are your plans for tonight?",
+        "Not sure yet, maybe watch a movie.",
+        "That sounds relaxing.",
+        "Yeah, definitely need to unwind."
+    ]
     private let tableView = UITableView()
     private let inputContainerView = UIView()
     private let textView = UITextView()
@@ -21,7 +43,7 @@ final class ChatViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .secondarySystemBackground
 
         setupTableView()
         setupInputBar()
@@ -31,10 +53,19 @@ final class ChatViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        textView.becomeFirstResponder()
+        if messages.isEmpty {
+            textView.becomeFirstResponder()
+        }
     }
-    
+
+    override func viewDidAppear(_ animated: Bool) {
+        if tableView.contentSize.height > tableView.bounds.height {
+            tableView.scrollToRow(at: IndexPath(row: messages.count - 1, section: 0),
+                                  at: .bottom,
+                                  animated: false)
+        }
+    }
+
     deinit {
         if let observer = keyboardNotificationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -113,6 +144,7 @@ final class ChatViewController: UIViewController {
         tableView.addGestureRecognizer(tapGesture)
     }
 
+    // MARK: - on Keyboard appear/disappear
     private func handleKeyboardNotification(notification: Notification) {
         guard
             let userInfo = notification.userInfo,
@@ -123,15 +155,19 @@ final class ChatViewController: UIViewController {
 
         keyboardHeight = view.frame.height - keyboardFrame.origin.y
         inputBottomConstraint?.constant = keyboardHeight > 0 ? -keyboardHeight + view.safeAreaInsets.bottom : 0
-        tableView.contentInset = UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
-        
+
         let curve = UIView.AnimationCurve(rawValue: Int(curveRaw)) ?? .easeInOut
         let animator = UIViewPropertyAnimator(duration: duration, curve: curve) {
+            self.tableView.verticalScrollIndicatorInsets.top = self.tableTopInset
+            self.tableView.contentInset = UIEdgeInsets(top: self.tableTopInset, left: 0, bottom: 0, right: 0)
             self.view.layoutIfNeeded()
         }
         animator.startAnimation()
 
-        scrollToBootom()
+        /// laggy animation
+        if tableView.contentSize.height > tableView.bounds.height {
+            self.scrollToBootom()
+        }
     }
 
     @objc private func dismissKeyboard() {
@@ -139,49 +175,56 @@ final class ChatViewController: UIViewController {
     }
 
     @objc private func sendTapped() {
-        guard !textView.text.isEmpty else { return }
-        
-        let message = textView.text.trimmingCharacters(in: .whitespaces)
-        messages.append(message)
+        let message = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         textView.text = ""
+
+        guard !message.isEmpty else { return }
+
+        messages.append(message)
         tableView.insertRows(at: [IndexPath(row: messages.count - 1, section: 0)], with: .bottom)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            self.animateContentInsets()
-            self.scrollToBootom()
-        }
+        self.animateContentInsets()
+        self.scrollToBootom()
     }
 
     private func scrollToBootom() {
-        let lastRow = self.messages.count - 1
-        if lastRow >= 0 {
+        let lastRow = messages.count - 1
+        if lastRow > 0 {
             let indexPath = IndexPath(row: lastRow, section: 0)
-            self.tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
+            tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
         }
     }
 
-    private var topInset: CGFloat {
-        let safeAreHeight: CGFloat = self.view.frame.height - self.view.safeAreaInsets.top - self.view.safeAreaInsets.bottom
+    // MARK: - Stick to Bottom
+    /// moves messages down to TextEditor,
+    /// only for content is smaller than screen, otherwise = 0
+    private var tableTopInset: CGFloat {
+        guard tableView.contentSize.height > 0 else {
+            return tableView.frame.height - keyboardHeight + view.safeAreaInsets.bottom
+        }
         var inset: CGFloat = 0
+        let safeAreHeight: CGFloat = view.frame.height - view.safeAreaInsets.top - view.safeAreaInsets.bottom
         let availableHeightForTableView = safeAreHeight - keyboardHeight - inputContainerView.frame.height
-        if availableHeightForTableView > self.tableView.contentSize.height {
-            inset = availableHeightForTableView - self.tableView.contentSize.height
-            // remove gap when keyboard is open
+
+        /// only for content is smaller than screen
+        if availableHeightForTableView > tableView.contentSize.height {
+            inset = availableHeightForTableView - tableView.contentSize.height
+            /// remove gap when keyboard is open
             if keyboardHeight > 0 {
                 inset = inset + view.safeAreaInsets.bottom
             }
         }
+
         return inset
     }
-    
+
     private func animateContentInsets() {
         UIView.animate(withDuration: 0.3) {
-            self.tableView.contentInset = UIEdgeInsets(top: self.topInset, left: 0, bottom: 0, right: 0)
+            self.tableView.contentInset = UIEdgeInsets(top: self.tableTopInset, left: 0, bottom: 0, right: 0)
         }
     }
 }
 
-// MARK: - UITableViewDataSource
 extension ChatViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         messages.count
