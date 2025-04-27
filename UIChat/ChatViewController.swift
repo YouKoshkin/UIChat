@@ -10,15 +10,14 @@ import UIKit
 
 final class ChatViewController: UIViewController {
 
+    private var messages: [String] = []
     private let tableView = UITableView()
     private let inputContainerView = UIView()
     private let textView = UITextView()
-
-    private var inputBottomConstraint: NSLayoutConstraint?
-
+    
     private var keyboardNotificationObserver: NSObjectProtocol?
-
-    private var messages: [String] = []
+    private var inputBottomConstraint: NSLayoutConstraint?
+    private var keyboardHeight: CGFloat = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,6 +29,12 @@ final class ChatViewController: UIViewController {
         setupTapToDismissKeyboard()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        textView.becomeFirstResponder()
+    }
+    
     deinit {
         if let observer = keyboardNotificationObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -40,12 +45,14 @@ final class ChatViewController: UIViewController {
         tableView.translatesAutoresizingMaskIntoConstraints = false
         tableView.dataSource = self
         tableView.separatorStyle = .none
+        tableView.showsVerticalScrollIndicator = false
+        tableView.scrollsToTop = false
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
     }
 
@@ -57,9 +64,11 @@ final class ChatViewController: UIViewController {
         textView.translatesAutoresizingMaskIntoConstraints = false
         textView.isScrollEnabled = false
         textView.font = UIFont.systemFont(ofSize: 16)
+        textView.textColor = .black
         textView.backgroundColor = .white
         textView.layer.cornerRadius = 8
         textView.layer.masksToBounds = true
+        textView.autocorrectionType = .no
         inputContainerView.addSubview(textView)
 
         let sendButton = UIButton(type: .system)
@@ -77,7 +86,7 @@ final class ChatViewController: UIViewController {
             inputBottomConstraint!,
 
             textView.topAnchor.constraint(equalTo: inputContainerView.topAnchor, constant: 8),
-            textView.leadingAnchor.constraint(equalTo: inputContainerView.leadingAnchor, constant: 8),
+            textView.leadingAnchor.constraint(equalTo: inputContainerView.leadingAnchor, constant: 32),
             textView.bottomAnchor.constraint(equalTo: inputContainerView.bottomAnchor, constant: -8),
 
             sendButton.leadingAnchor.constraint(equalTo: textView.trailingAnchor, constant: 8),
@@ -112,15 +121,17 @@ final class ChatViewController: UIViewController {
             let curveRaw = userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt
         else { return }
 
+        keyboardHeight = view.frame.height - keyboardFrame.origin.y
+        inputBottomConstraint?.constant = keyboardHeight > 0 ? -keyboardHeight + view.safeAreaInsets.bottom : 0
+        tableView.contentInset = UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
+        
         let curve = UIView.AnimationCurve(rawValue: Int(curveRaw)) ?? .easeInOut
-        let keyboardVisibleHeight = view.frame.height - keyboardFrame.origin.y
-
-        inputBottomConstraint?.constant = -keyboardVisibleHeight
-
         let animator = UIViewPropertyAnimator(duration: duration, curve: curve) {
             self.view.layoutIfNeeded()
         }
         animator.startAnimation()
+
+        scrollToBootom()
     }
 
     @objc private func dismissKeyboard() {
@@ -129,17 +140,43 @@ final class ChatViewController: UIViewController {
 
     @objc private func sendTapped() {
         guard !textView.text.isEmpty else { return }
-
-        messages.append(textView.text)
+        
+        let message = textView.text.trimmingCharacters(in: .whitespaces)
+        messages.append(message)
         textView.text = ""
-        tableView.reloadData()
+        tableView.insertRows(at: [IndexPath(row: messages.count - 1, section: 0)], with: .bottom)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            let lastRow = self.messages.count - 1
-            if lastRow >= 0 {
-                let indexPath = IndexPath(row: lastRow, section: 0)
-                self.tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
+            self.animateContentInsets()
+            self.scrollToBootom()
+        }
+    }
+
+    private func scrollToBootom() {
+        let lastRow = self.messages.count - 1
+        if lastRow >= 0 {
+            let indexPath = IndexPath(row: lastRow, section: 0)
+            self.tableView.scrollToRow(at: indexPath, at: .bottom, animated: true)
+        }
+    }
+
+    private var topInset: CGFloat {
+        let safeAreHeight: CGFloat = self.view.frame.height - self.view.safeAreaInsets.top - self.view.safeAreaInsets.bottom
+        var inset: CGFloat = 0
+        let availableHeightForTableView = safeAreHeight - keyboardHeight - inputContainerView.frame.height
+        if availableHeightForTableView > self.tableView.contentSize.height {
+            inset = availableHeightForTableView - self.tableView.contentSize.height
+            // remove gap when keyboard is open
+            if keyboardHeight > 0 {
+                inset = inset + view.safeAreaInsets.bottom
             }
+        }
+        return inset
+    }
+    
+    private func animateContentInsets() {
+        UIView.animate(withDuration: 0.3) {
+            self.tableView.contentInset = UIEdgeInsets(top: self.topInset, left: 0, bottom: 0, right: 0)
         }
     }
 }
@@ -155,6 +192,7 @@ extension ChatViewController: UITableViewDataSource {
         let cell = UITableViewCell()
         cell.selectionStyle = .none
         cell.textLabel?.text = messages[indexPath.row]
+        cell.textLabel?.textAlignment = .right
         cell.textLabel?.numberOfLines = 0
         return cell
     }
