@@ -209,12 +209,11 @@ final class ChatViewController: UIViewController {
         /// only for content is smaller than screen
         if availableHeightForTableView > tableView.contentSize.height {
             inset = availableHeightForTableView - tableView.contentSize.height
-            /// remove gap when keyboard is open
+            /// removes gap when keyboard is open
             if keyboardHeight > 0 {
                 inset = inset + view.safeAreaInsets.bottom
             }
         }
-
         return inset
     }
 
